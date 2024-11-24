@@ -4,19 +4,30 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.Mathematics;
 using Unity.VisualScripting;
+using UnityEngine.UIElements;
+using System;
 
-//[ExecuteInEditMode()]
+[ExecuteInEditMode()]
 public class SplineExtrude : MonoBehaviour
 {
+    public enum Function
+    {
+        Circle,
+        Rose,
+        Cardioid
+    }
+
     MeshFilter meshFilter;
 
+    [SerializeField] Function function = Function.Circle;
     [SerializeField] List<GameObject> points = new List<GameObject>();
     [SerializeField] int splineSubdivisions = 10;
     [SerializeField] int aroundSubdivisions = 5;
     [SerializeField] float width = 1;
 
+    Function prevFunction = Function.Circle;
     List<Vector3> positions = new List<Vector3>();
-    int prevSub = 10;
+    int prevSub = 10, prevAround = 5;
     float prevWidth = 1f;
 
     void Awake()
@@ -31,10 +42,11 @@ public class SplineExtrude : MonoBehaviour
     private void Update()
     {
         splineSubdivisions = math.max(10, splineSubdivisions);
+        aroundSubdivisions = math.max(2, aroundSubdivisions);
         width = math.max(0, width);
-        if (splineSubdivisions != prevSub || width != prevWidth)
+        if (function != prevFunction || splineSubdivisions != prevSub || aroundSubdivisions != prevAround || width != prevWidth)
         {
-            prevSub = splineSubdivisions; prevWidth = width;
+            prevFunction = function; prevSub = splineSubdivisions; prevAround = aroundSubdivisions ; prevWidth = width;
 
             positions = new List<Vector3>();
             foreach (GameObject point in points)
@@ -66,9 +78,23 @@ public class SplineExtrude : MonoBehaviour
         return (1 - t) * a + t * b;
     }
 
+    float RingFunction(float theta)
+    {
+        float thetaRadians = theta * Mathf.Deg2Rad;
+        if (function == Function.Circle)
+            return 1f;
+        else if (function == Function.Rose)
+        {
+            return Mathf.Sin(2 * thetaRadians);
+        }else if (function == Function.Cardioid)
+        {
+            return 1 + Mathf.Sin(thetaRadians);
+        }
+        return 1f;
+    }
+
     void Evaluate(float time, out Vector3 position, out Vector3 forward, out Vector3 up)
     {
-        //this is the next thing to finish
         List<Vector3> iter = new List<Vector3>();
         List<Vector3> iter2 = new List<Vector3>();
         foreach (GameObject obj in points)
@@ -119,63 +145,53 @@ public class SplineExtrude : MonoBehaviour
     {
         Mesh mesh = new Mesh();
         List<Vector3> verts = new List<Vector3>();
-        List<Vector3> normals = new List<Vector3>();
         List<int> indices = new List<int>();
         List<Vector2> uvs = new List<Vector2>();
-        
-        for (float j = 0; j < splineSubdivisions; j++)
+
+        float inStep = 360f / aroundSubdivisions;
+
+        for (float i = 0; i <= splineSubdivisions; i++)
         {
-            Vector3 pos1, forward1, up1;
-            Vector3 pos2, forward2, up2;
-            float time1 = j / splineSubdivisions;
-            float time2 = (j + 1) / splineSubdivisions;
+            Vector3 pos, forward, up;
+            float time = i / splineSubdivisions;
 
-            Evaluate(time1, out pos1, out forward1, out up1);
-            Evaluate(time2, out pos2, out forward2, out up2);
-
-            Debug.DrawLine(pos1, pos2, Color.red, Time.deltaTime);
+            Evaluate(time, out pos, out forward, out up);
             
-            Vector3 right1 = Vector3.Cross(forward1, up1).normalized;
-            right1 = Quaternion.AngleAxis(0, forward1) * right1;
-            Vector3 normal1 = Quaternion.AngleAxis(90, forward1) * right1;
+            Vector3 right = Vector3.Cross(forward, up).normalized;
 
-            Vector3 right2 = Vector3.Cross(forward2, up2).normalized;
-            right2 = Quaternion.AngleAxis(0, forward2) * right2;
-            Vector3 normal2 = Quaternion.AngleAxis(90, forward2) * right2;
-
-            Vector3 p1 = pos1 + right1 * width;
-            Vector3 p2 = pos1 - right1 * width;
-            Vector3 p3 = pos2 + right2 * width;
-            Vector3 p4 = pos2 - right2 * width;
-
-            verts.Add(p1);
-            verts.Add(p2);
-            verts.Add(p3);
-            verts.Add(p4);
-
-            normals.Add(normal1);
-            normals.Add(normal1);
-            normals.Add(normal2);
-            normals.Add(normal2);
-
-            uvs.Add(new Vector2(time1, 1));
-            uvs.Add(new Vector2(time1, 0));
-            uvs.Add(new Vector2(time2, 1));
-            uvs.Add(new Vector2(time2, 0));
-
-            indices.Add((int)j * 4 + 2);
-            indices.Add((int)j * 4 + 1);
-            indices.Add((int)j * 4);
-
-            indices.Add((int)j * 4 + 1);
-            indices.Add((int)j * 4 + 2);
-            indices.Add((int)j * 4 + 3);
+            for(float j = 0; j <= aroundSubdivisions; j++)
+            {
+                float theta = j * inStep;
+                Vector3 ringPos = Quaternion.AngleAxis(theta, forward) * right;
+                verts.Add(pos + ringPos * RingFunction(theta) * width);
+                uvs.Add(new Vector2(j / aroundSubdivisions, i / splineSubdivisions));
+            }
         }
-        
+
+        int columns = aroundSubdivisions + 1;
+
+        for (int i = 0; i < splineSubdivisions; i++)
+        {
+            for (int j = 0; j < aroundSubdivisions; j++)
+            {
+                int start = i * columns + j;
+                
+                indices.Add(start);
+                indices.Add(start + 1);
+                indices.Add(start + columns + 1);
+
+                indices.Add(start + columns);
+                indices.Add(start);
+                indices.Add(start + columns + 1);
+            }
+        }
+
+
         mesh.SetVertices(verts);
-        mesh.SetNormals(normals);
         mesh.SetUVs(0, uvs);
         mesh.SetTriangles(indices, 0);
+
+        mesh.RecalculateNormals();
         meshFilter.mesh = mesh;
     }
 }
