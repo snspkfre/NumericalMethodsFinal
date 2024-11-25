@@ -14,7 +14,8 @@ public class SplineExtrude : MonoBehaviour
     {
         Circle,
         Rose,
-        Cardioid
+        Cardioid,
+        Star
     }
 
     MeshFilter meshFilter;
@@ -84,12 +85,11 @@ public class SplineExtrude : MonoBehaviour
         if (function == Function.Circle)
             return 1f;
         else if (function == Function.Rose)
-        {
             return Mathf.Sin(2 * thetaRadians);
-        }else if (function == Function.Cardioid)
-        {
-            return 1 + Mathf.Sin(thetaRadians);
-        }
+        else if (function == Function.Cardioid)
+            return 1f + Mathf.Sin(thetaRadians);
+        else if (function == Function.Star)
+            return 2f - Mathf.Abs(Mathf.Sin(2 * thetaRadians));
         return 1f;
     }
 
