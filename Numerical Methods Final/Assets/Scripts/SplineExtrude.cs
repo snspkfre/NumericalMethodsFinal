@@ -10,23 +10,32 @@ using System;
 [ExecuteInEditMode()]
 public class SplineExtrude : MonoBehaviour
 {
-    public enum Function
+    public enum RingFunction
     {
         Circle,
         Rose,
         Cardioid,
         Star
     }
+    public enum SplineFunction
+    {
+        Flat,
+        Sin2,
+        Quadratic,
+        Zigzag
+    }
 
     MeshFilter meshFilter;
 
-    [SerializeField] Function function = Function.Circle;
+    [SerializeField] RingFunction currentRingFunction = RingFunction.Circle;
+    [SerializeField] SplineFunction currentSplineFunction = SplineFunction.Flat;
     [SerializeField] List<GameObject> points = new List<GameObject>();
     [SerializeField] int splineSubdivisions = 10;
     [SerializeField] int aroundSubdivisions = 5;
     [SerializeField] float width = 1;
 
-    Function prevFunction = Function.Circle;
+    RingFunction prevRingFunction = RingFunction.Circle;
+    SplineFunction prevSplineFunction = SplineFunction.Flat;
     List<Vector3> positions = new List<Vector3>();
     int prevSub = 10, prevAround = 5;
     float prevWidth = 1f;
@@ -45,9 +54,10 @@ public class SplineExtrude : MonoBehaviour
         splineSubdivisions = math.max(10, splineSubdivisions);
         aroundSubdivisions = math.max(2, aroundSubdivisions);
         width = math.max(0, width);
-        if (function != prevFunction || splineSubdivisions != prevSub || aroundSubdivisions != prevAround || width != prevWidth)
+        if (currentRingFunction != prevRingFunction || currentSplineFunction != prevSplineFunction || splineSubdivisions != prevSub || aroundSubdivisions != prevAround || width != prevWidth)
         {
-            prevFunction = function; prevSub = splineSubdivisions; prevAround = aroundSubdivisions ; prevWidth = width;
+            prevRingFunction = currentRingFunction; prevSub = splineSubdivisions; prevAround = aroundSubdivisions ; prevWidth = width;
+            prevSplineFunction = currentSplineFunction;
 
             positions = new List<Vector3>();
             foreach (GameObject point in points)
@@ -79,18 +89,34 @@ public class SplineExtrude : MonoBehaviour
         return (1 - t) * a + t * b;
     }
 
-    float RingFunction(float theta)
+    float ApplyRingFunction(float theta)
     {
         float thetaRadians = theta * Mathf.Deg2Rad;
-        if (function == Function.Circle)
+        if (currentRingFunction == RingFunction.Circle)
             return 1f;
-        else if (function == Function.Rose)
+        else if (currentRingFunction == RingFunction.Rose)
             return Mathf.Sin(2 * thetaRadians);
-        else if (function == Function.Cardioid)
+        else if (currentRingFunction == RingFunction.Cardioid)
             return 1f + Mathf.Sin(thetaRadians);
-        else if (function == Function.Star)
+        else if (currentRingFunction == RingFunction.Star)
             return 2f - Mathf.Abs(Mathf.Sin(2 * thetaRadians));
         return 1f;
+    }
+    float ApplySplineFunction(float t)
+    {
+        switch (currentSplineFunction)
+        {
+            case SplineFunction.Flat:
+                return 1f;
+            case SplineFunction.Sin2:
+                return Mathf.Pow(Mathf.Sin(8*t), 2f);
+            case SplineFunction.Quadratic:
+                return -4f * Mathf.Pow(t - 0.5f, 2) + 1;
+            case SplineFunction.Zigzag:
+                return Mathf.Abs((t % .5f)*4f-1f);
+            default:
+                return 1f;
+        }
     }
 
     void Evaluate(float time, out Vector3 position, out Vector3 forward, out Vector3 up)
@@ -163,7 +189,7 @@ public class SplineExtrude : MonoBehaviour
             {
                 float theta = j * inStep;
                 Vector3 ringPos = Quaternion.AngleAxis(theta, forward) * right;
-                verts.Add(pos + ringPos * RingFunction(theta) * width);
+                verts.Add(pos + ringPos * ApplyRingFunction(theta) * ApplySplineFunction(time) * width);
                 uvs.Add(new Vector2(j / aroundSubdivisions, i / splineSubdivisions));
             }
         }
