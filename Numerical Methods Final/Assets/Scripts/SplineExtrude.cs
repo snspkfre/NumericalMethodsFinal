@@ -15,7 +15,8 @@ public class SplineExtrude : MonoBehaviour
         Circle,
         Rose,
         Cardioid,
-        Star
+        Star,
+        Sin2
     }
     public enum SplineFunction
     {
@@ -100,6 +101,8 @@ public class SplineExtrude : MonoBehaviour
             return 1f + Mathf.Sin(thetaRadians);
         else if (currentRingFunction == RingFunction.Star)
             return 2f - Mathf.Abs(Mathf.Sin(2 * thetaRadians));
+        else if (currentRingFunction == RingFunction.Sin2)
+            return Mathf.Pow(Mathf.Sin(thetaRadians), 2f);
         return 1f;
     }
     float ApplySplineFunction(float t)
